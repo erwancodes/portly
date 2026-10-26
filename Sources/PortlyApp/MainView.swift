@@ -386,6 +386,10 @@ struct MainView: View {
             Button("Open \(url)") {
                 if let link = URL(string: url) { NSWorkspace.shared.open(link) }
             }
+            Button("Copy URL") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url, forType: .string)
+            }
         }
         Button("Edit…") {
             editingServer = EditingServer(projectID: project.id, projectName: project.name, projectRoot: project.root, server: runtime.config)
@@ -412,6 +416,10 @@ struct MainView: View {
             Divider()
             Button("Open \(url)") {
                 if let link = URL(string: url) { NSWorkspace.shared.open(link) }
+            }
+            Button("Copy URL") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url, forType: .string)
             }
         }
     }

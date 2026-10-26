@@ -87,6 +87,14 @@ struct ServerDetail: View {
                         Label("Open", systemImage: "safari")
                     }
                     .help("Open \(url)")
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url, forType: .string)
+                    } label: {
+                        Label("Copy URL", systemImage: "doc.on.doc")
+                    }
+                    .help("Copy \(url)")
                 }
 
                 if runtime.state != .stopped {
