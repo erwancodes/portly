@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import (
@@ -12,9 +14,10 @@ import (
 )
 
 type childProcess struct {
-	cmd  *exec.Cmd
-	pty  *os.File
-	pgid int
+	cmd   *exec.Cmd
+	pty   *os.File
+	input io.WriteCloser
+	pgid  int
 }
 
 func loginShell(command string) (string, []string) {
@@ -60,15 +63,45 @@ func startChildPTY(command, dir string, env []string) (*childProcess, io.Reader,
 func startChildPiped(command, dir string, env []string) (*childProcess, io.Reader, error) {
 	cmd := newShellCommand(command, dir, env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	stdout, err := cmd.StdoutPipe()
+	input, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, err
 	}
-	cmd.Stderr = cmd.Stdout
-	if err := cmd.Start(); err != nil {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		_ = input.Close()
 		return nil, nil, err
 	}
-	return &childProcess{cmd: cmd, pgid: cmd.Process.Pid}, stdout, nil
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+	if err := cmd.Start(); err != nil {
+		_ = input.Close()
+		_ = reader.Close()
+		_ = writer.Close()
+		return nil, nil, err
+	}
+	_ = writer.Close()
+	return &childProcess{cmd: cmd, input: input, pgid: cmd.Process.Pid}, reader, nil
+}
+
+func (c *childProcess) write(data []byte) (int, error) {
+	if c == nil {
+		return 0, fmt.Errorf("process is not running")
+	}
+	if c.pty != nil {
+		return c.pty.Write(data)
+	}
+	if c.input != nil {
+		return c.input.Write(data)
+	}
+	return 0, fmt.Errorf("process has no writable terminal")
+}
+
+func (c *childProcess) resize(width, height int) error {
+	if c == nil || c.pty == nil {
+		return fmt.Errorf("process does not expose a resizable terminal")
+	}
+	return pty.Setsize(c.pty, &pty.Winsize{Cols: uint16(width), Rows: uint16(height)})
 }
 
 func (c *childProcess) signalGroup(sig syscall.Signal) {
@@ -79,6 +112,24 @@ func (c *childProcess) signalGroup(sig syscall.Signal) {
 	_ = syscall.Kill(c.pgid, sig)
 }
 
+func (c *childProcess) terminate() { c.signalGroup(syscall.SIGTERM) }
+
+func (c *childProcess) forceKill() { c.signalGroup(syscall.SIGKILL) }
+
+func forceKillProcess(pid int) {
+	if pid > 0 {
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+}
+
+func terminatePID(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	return syscall.Kill(pid, syscall.SIGTERM)
+}
+
 func (c *childProcess) wait() error {
 	if c == nil || c.cmd == nil {
 		return nil
@@ -86,6 +137,9 @@ func (c *childProcess) wait() error {
 	err := c.cmd.Wait()
 	if c.pty != nil {
 		_ = c.pty.Close()
+	}
+	if c.input != nil {
+		_ = c.input.Close()
 	}
 	return err
 }

@@ -706,7 +706,9 @@ func cmdForever(g globalOpts, args []string) int {
 		if err != nil {
 			fail(err.Error())
 		}
-		emit(state, g.JSON, func() string { return "Portly will launch at login and is now supervised by systemd." })
+		emit(state, g.JSON, func() string {
+			return "Portly will launch at login and is now supervised by " + foreverBackendName() + "."
+		})
 	case "disable":
 		state, err := foreverDisable(c)
 		if err != nil {
@@ -724,7 +726,7 @@ func cmdForever(g globalOpts, args []string) int {
 			if state.Loaded {
 				loaded = "loaded"
 			}
-			return fmt.Sprintf("Launch at login: %s (systemd %s)", en, loaded)
+			return fmt.Sprintf("Launch at login: %s (%s %s)", en, foreverBackendName(), loaded)
 		})
 	default:
 		fail("Unknown forever subcommand '" + sub + "'")
@@ -773,7 +775,7 @@ func parseServerActions(values []string) []ServerAction {
 	return out
 }
 
-const rootHelp = `portly - Control Portly, the headless Linux dev server manager.
+const rootHelp = `portly - Control Portly, the headless local development server manager.
 
 Portly keeps local dev servers running on fixed ports, restarts them when
 they crash, and exposes everything through this CLI so an agent can drive it.
@@ -799,10 +801,10 @@ Commands:
   remove              Remove a server or project
   take-over, adopt    Move an external listener under Portly
   port                Show what is listening on a port
-  kill-port           SIGTERM the occupant of a port
-  open                No-op on Linux (no UI)
+  kill-port           Gracefully stop the occupant of a port
+  open                Open the Portly UI when one is installed
   quit                Stop every server and the daemon
-  forever             Manage the systemd user unit
+  forever             Manage launch at login
   config              Print the config file
   daemon              Run the headless supervisor in the foreground
 
@@ -814,7 +816,7 @@ func commandHelp(cmd string) string {
 		"status":  "Show active servers. --details for the full inventory. --json for machine-readable data.\n",
 		"temp":    "Run a short-lived process. Returns a job ID immediately.\nUsage: portly temp '<command>' [--name NAME] [--path DIR] [--port N] [--timeout 30m] [--env KEY=VALUE]\n",
 		"wait":    "Wait for a temporary job and return its exit code.\nUsage: portly wait <id> [--tail 500] [--no-logs]\n",
-		"forever": "Keep Portly available across Linux logins via systemd --user.\nUsage: portly forever enable|status|disable [--json]\n",
+		"forever": "Keep Portly available across logins via the platform scheduler.\nUsage: portly forever enable|status|disable [--json]\n",
 		"daemon":  "Run the headless supervisor in the foreground.\nUsage: portly daemon [--api-port 7737]\n",
 	}
 	if h, ok := helps[cmd]; ok {

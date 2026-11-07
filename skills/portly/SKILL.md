@@ -1,13 +1,13 @@
 ---
 name: portly
-description: Manage persistent projects and temporary local processes with the Portly macOS app and CLI. Use when an agent needs to run, start, stop, restart, inspect logs or health, configure projects and ports, adopt external listeners, resolve port conflicts, or enable launch at login.
+description: Manage persistent projects and temporary local processes with Portly on Windows, macOS, and Linux. Use when an agent needs to run, start, stop, restart, inspect logs or health, configure projects and ports, adopt external listeners, resolve port conflicts, or enable launch at login.
 ---
 
 # Portly
 
-Use the `portly` CLI as the primary interface. Every command launches Portly.app automatically if needed; this is a state-changing side effect even for `status` when the app was closed.
+Use the `portly` CLI as the primary interface. Every command can launch the Portly supervisor automatically if needed; this is a state-changing side effect even for `status` when the supervisor was closed.
 
-If `portly` is not available on `PATH`, use the onboarding-installed CLI at `$HOME/.local/bin/portly`, or the copy bundled with the app at `/Applications/Portly.app/Contents/Resources/portly-cli`.
+If `portly` is not available on `PATH`, use the platform-installed CLI. On Windows this is usually `$env:LOCALAPPDATA\Portly\bin\portly.exe`; the GUI is `$env:LOCALAPPDATA\Portly\Portly.exe`. On macOS use `$HOME/.local/bin/portly` or the copy bundled with the app at `/Applications/Portly.app/Contents/Resources/portly-cli`. On Linux use the `cli/portly` binary from this repository.
 
 ## Inspect first
 
@@ -44,7 +44,7 @@ The Portly installer also adds this rule, between `portly:managed-rule` markers,
 | `take-over`, `adopt` | Move an external listener under Portly |
 | `port`, `kill-port` | Inspect or explicitly stop a port occupant |
 | `open`, `quit`, `config` | Control the app or read its configuration |
-| `forever enable\|status\|disable` | Manage launch at login through the macOS LaunchAgent |
+| `forever enable\|status\|disable` | Manage launch at login through the platform scheduler (Task Scheduler on Windows, LaunchAgent on macOS, systemd --user on Linux) |
 
 Run `portly <command> --help` for exact flags. Use `--json` when structured fields are actually needed; `config` prints JSON or a path directly.
 
@@ -106,6 +106,15 @@ Keep proof distinct: `status` proves Portly state, `logs` proves captured child 
 - Quit: `portly quit --json`.
 
 Removing a project stops its servers. Quitting stops every managed server because Portly is the supervisor. The source of truth is `~/.config/portly/config.json`, hot-reloaded by the app; logs are in `~/.config/portly/logs/`.
+
+## Windows
+
+On Windows, use `portly` from a new PowerShell session after installation. The
+per-user CLI is `%LOCALAPPDATA%\Portly\bin\portly.exe`, the GUI is
+`%LOCALAPPDATA%\Portly\Portly.exe`, and configuration/logs remain under
+`%USERPROFILE%\.config\portly`. `forever enable|status|disable` uses Windows
+Task Scheduler. `open` opens the GUI, while closing its window leaves the
+supervisor running in the notification tray.
 
 ## macOS forever mode
 

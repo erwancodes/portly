@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Portly",
+  "outputfilename": "Portly.exe",
+  "frontend:dir": "frontend",
+  "frontend:install": "pnpm.cmd install --frozen-lockfile",
+  "frontend:build": "pnpm.cmd build",
+  "frontend:dev": "pnpm.cmd dev",
+  "author": {
+    "name": "Portly contributors",
+    "email": ""
+  }
+}

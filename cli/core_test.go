@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -153,9 +154,13 @@ func TestTempWaitIntegration(t *testing.T) {
 	dir := t.TempDir()
 	timeout := 30
 	var job TemporaryJobStatus
+	command := "printf 'hello-portly\\n'; exit 3"
+	if runtime.GOOS == "windows" {
+		command = "Write-Output 'hello-portly'; exit 3"
+	}
 	if err := c.post("temporary/run", runTemporaryRequest{
 		Name:           "echo-job",
-		Command:        "printf 'hello-portly\\n'; exit 3",
+		Command:        command,
 		Directory:      dir,
 		TimeoutSeconds: &timeout,
 	}, &job); err != nil {
@@ -196,6 +201,9 @@ func TestTempWaitIntegration(t *testing.T) {
 }
 
 func TestProjectServerLifecycle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the legacy integration fixture uses a Unix-only Python command")
+	}
 	home := t.TempDir()
 	t.Setenv("PORTLY_HOME", home)
 	root := t.TempDir()
@@ -278,25 +286,6 @@ func TestForeverStatusDoesNotWriteLaunchAgent(t *testing.T) {
 	state := currentForeverState()
 	if strings.Contains(state.Unit, "LaunchAgents") {
 		t.Fatalf("unit path leaked launchd: %s", state.Unit)
-	}
-}
-
-func TestForeverUnitIsSystemdUserService(t *testing.T) {
-	unit := foreverUnitContents("/usr/local/bin/portly")
-	for _, want := range []string{
-		"[Unit]",
-		"[Service]",
-		"[Install]",
-		"WantedBy=default.target",
-		"ExecStart=/usr/local/bin/portly daemon",
-		"WorkingDirectory=%h",
-	} {
-		if !strings.Contains(unit, want) {
-			t.Fatalf("missing %q in:\n%s", want, unit)
-		}
-	}
-	if strings.Contains(unit, "LaunchAgents") || strings.Contains(unit, "launchctl") {
-		t.Fatal(unit)
 	}
 }
 

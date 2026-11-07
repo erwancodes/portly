@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -159,6 +158,12 @@ func (s *supervisor) refreshMetrics() {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A failed process snapshot (the Windows perf query can time out) returns
+	// nothing at all. Keep the last metrics instead of reporting every server at
+	// zero, and skip the memory guard for this tick.
+	if len(samples) == 0 && len(targets) > 0 {
+		return
+	}
 	byProject := map[string]uint64{}
 	runningByProject := map[string]bool{}
 	for id, pid := range targets {
@@ -356,7 +361,7 @@ func (s *supervisor) terminateEverything() {
 	}
 	for _, rt := range s.allRuntimes() {
 		if pid := rt.currentPID(); pid > 0 {
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			forceKillProcess(pid)
 		}
 	}
 }
@@ -670,6 +675,15 @@ func (s *supervisor) close() {
 	case <-s.quit:
 	default:
 		close(s.quit)
+	}
+	s.mu.Lock()
+	runtimes := make([]*serverRuntime, 0, len(s.runtimes))
+	for _, rt := range s.runtimes {
+		runtimes = append(runtimes, rt)
+	}
+	s.mu.Unlock()
+	for _, rt := range runtimes {
+		rt.logs.close()
 	}
 }
 

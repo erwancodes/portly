@@ -53,6 +53,31 @@ Do not run the macOS app and this daemon on the same host: they both claim `127.
 
 Docs: [portly.melvynx.dev/linux](https://portly.melvynx.dev/linux)
 
+## Windows
+
+The headless Go supervisor in [`cli/`](cli) also builds for Windows x64:
+
+```powershell
+cd cli
+go test ./...
+go build -o portly.exe .
+```
+
+Windows uses PowerShell when available and falls back to `cmd.exe` for server
+commands. Port discovery uses `netstat`, process-tree shutdown uses
+`taskkill`, and `portly forever enable|status|disable` uses the per-user
+Windows Task Scheduler. The local API remains bound to `127.0.0.1`.
+
+The current Windows milestone includes the CLI/daemon supervisor, the ConPTY
+fallback, and a native Wails desktop shell in [`windows/`](windows). The shell
+shows projects, temporary jobs, resources, live logs, and daemon settings; it
+hides on window close and keeps the supervisor running until **Quit Portly**.
+The shell also exposes terminal stdin/resize on ConPTY, includes a per-user
+`PortlySetup.exe` installer, and adds a native Windows notification-area menu.
+Automatic binary updates remain a release-page handoff. See
+[`docs/windows.md`](docs/windows.md) for the supported surface and known
+limitations.
+
 ## Updates and releases
 
 Portly checks the signed Sparkle feed once a day and also exposes **Check for Updates…** in the app menu and Settings. The installed version is visible in Settings and in the standard About window.
@@ -112,7 +137,7 @@ portly take-over codelynx/web --json
 portly stop --project codelynx --json
 ```
 
-Other commands are `temp` (`temporary`, `run-temp`), `wait`, `action`, `memory-limit` (`ram-limit`), `start`, `stop`, `restart`, `take-over` (`adopt`), `update-server`, `remove`, `port`, `kill-port`, `open`, `quit`, `forever`, and `config`. `temp` returns a job ID immediately; `wait` blocks for that ID and exits with the job's real exit code (`124` for timeout). `action` runs a configured maintenance command beside a server without restarting it. `memory-limit` shows or changes the global default and project overrides; it is off by default. `take-over` stops an external listener on the configured port and relaunches the server under Portly. `forever` manages the per-user macOS LaunchAgent. Run `portly <command> --help` for exact flags. `quit` stops every managed server because the app is the supervisor.
+Other commands are `temp` (`temporary`, `run-temp`), `wait`, `action`, `memory-limit` (`ram-limit`), `start`, `stop`, `restart`, `take-over` (`adopt`), `update-server`, `remove`, `port`, `kill-port`, `open`, `quit`, `forever`, and `config`. `temp` returns a job ID immediately; `wait` blocks for that ID and exits with the job's real exit code (`124` for timeout). `action` runs a configured maintenance command beside a server without restarting it. `memory-limit` shows or changes the global default and project overrides; it is off by default. `take-over` stops an external listener on the configured port and relaunches the server under Portly. `forever` uses the platform scheduler: LaunchAgent on macOS, systemd --user on Linux, and Windows Task Scheduler on Windows. Run `portly <command> --help` for exact flags. `quit` stops every managed server because the app is the supervisor.
 
 ## Configuration
 

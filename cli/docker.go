@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -32,6 +33,12 @@ func dockerExecutable() string {
 		"/opt/homebrew/bin/docker",
 		filepath.Join(home, ".docker", "bin", "docker"),
 	}
+	if runtime.GOOS == "windows" {
+		programFiles := os.Getenv("ProgramFiles")
+		if programFiles != "" {
+			candidates = append(candidates, filepath.Join(programFiles, "Docker", "Docker", "resources", "bin", "docker.exe"))
+		}
+	}
 	for _, candidate := range candidates {
 		if candidate == "docker" {
 			if path, err := exec.LookPath("docker"); err == nil {
@@ -39,7 +46,7 @@ func dockerExecutable() string {
 			}
 			continue
 		}
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
 			return candidate
 		}
 	}

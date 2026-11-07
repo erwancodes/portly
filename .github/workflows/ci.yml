@@ -29,9 +29,84 @@ jobs:
         with:
           go-version: "1.22"
           cache-dependency-path: cli/go.sum
+      - run: go mod download
       - run: go test ./...
       - run: GOOS=linux GOARCH=amd64 go build -o /tmp/portly-linux-amd64 .
       - run: GOOS=linux GOARCH=arm64 go build -o /tmp/portly-linux-arm64 .
+
+  windows-cli:
+    name: Build Windows CLI
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: cli/go.sum
+      - run: go mod download
+      - run: go test ./...
+      - run: go build -trimpath -ldflags "-s -w" -o portly.exe .
+      - run: Compress-Archive -Path portly.exe -DestinationPath portly-windows-amd64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portly-windows-amd64
+          path: |
+            cli/portly.exe
+            cli/portly-windows-amd64.zip
+
+  windows-shell:
+    name: Build Windows desktop shell
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: windows/frontend/pnpm-lock.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: windows/go.sum
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - run: pnpm --dir frontend typecheck
+      - run: pnpm --dir frontend build
+      - run: go mod download
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
+      - run: Copy-Item -LiteralPath build\bin\Portly.exe -Destination Portly.exe -Force
+      - run: go -C ../cli build -trimpath -ldflags "-s -w" -o portly.exe .
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.x"
+      - run: dotnet publish ../packaging/windows/installer/PortlySetup.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o setup-build
+      - run: Copy-Item -LiteralPath setup-build\PortlySetup.exe -Destination PortlySetup.exe -Force
+      - name: Assemble Windows package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release\cli, release\packaging\windows, release\skills\portly | Out-Null
+          Copy-Item -LiteralPath Portly.exe -Destination release\Portly.exe -Force
+          Copy-Item -LiteralPath PortlySetup.exe -Destination release\PortlySetup.exe -Force
+          Copy-Item -LiteralPath ..\cli\portly.exe -Destination release\cli\portly.exe -Force
+          Copy-Item -Path ..\packaging\windows\*.ps1 -Destination release\packaging\windows -Force
+          Copy-Item -Path ..\skills\portly\* -Destination release\skills\portly -Recurse -Force
+          Compress-Archive -Path release\* -DestinationPath portly-windows-amd64.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portly-windows-desktop
+          path: |
+            windows/Portly.exe
+            windows/portly-windows-amd64.zip
 
   website:
     name: Build website

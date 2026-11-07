@@ -117,5 +117,5 @@ func writeConfig(path string, cfg PortlyConfig) error {
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return replaceConfigFile(tmp, path)
 }

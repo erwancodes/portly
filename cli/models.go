@@ -484,6 +484,17 @@ type logsResponse struct {
 	Lines  []string `json:"lines"`
 }
 
+type terminalWriteRequest struct {
+	Server string `json:"server"`
+	Data   string `json:"data"`
+}
+
+type terminalResizeRequest struct {
+	Server string `json:"server"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 type portQueryResponse struct {
 	Port     int           `json:"port"`
 	Occupant *PortOccupant `json:"occupant"`

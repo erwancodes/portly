@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import (
@@ -9,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 type listener struct {
@@ -57,7 +58,7 @@ func stopOccupant(port int, expectedPID *int) (stopOutcome, error) {
 	if isDockerDaemonCommand(occ.Command) {
 		return stopOutcome{}, fmt.Errorf("Refusing to signal the Docker daemon. Stop the published container instead.")
 	}
-	if err := syscall.Kill(occ.PID, syscall.SIGTERM); err != nil {
+	if err := terminatePID(occ.PID); err != nil {
 		return stopOutcome{}, fmt.Errorf("Process %d refused the stop request.", occ.PID)
 	}
 	pid := occ.PID

@@ -92,6 +92,15 @@ func (s *logStore) updateLimits(maxLines, maxMB int) {
 	}
 }
 
+func (s *logStore) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.file != nil {
+		_ = s.file.Close()
+		s.file = nil
+	}
+}
+
 func (s *logStore) openFile() {
 	_ = ensureDirs()
 	path := logFile(s.serverID)

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -287,15 +287,15 @@ func (r *serverRuntime) stop(then func()) {
 	}
 	r.stopThen = then
 	group := r.child.pgid
-	r.logs.note(fmt.Sprintf("stopping (SIGTERM to process group %d)", group))
-	r.child.signalGroup(syscall.SIGTERM)
+	r.logs.note(fmt.Sprintf("stopping managed process tree %d", group))
+	r.child.terminate()
 	if r.killTimer != nil {
 		r.killTimer.Stop()
 	}
 	child := r.child
 	r.killTimer = time.AfterFunc(5*time.Second, func() {
-		r.logs.note("did not exit in 5s, sending SIGKILL")
-		child.signalGroup(syscall.SIGKILL)
+		r.logs.note("did not exit in 5s, forcing managed process tree to stop")
+		child.forceKill()
 	})
 	r.mu.Unlock()
 }
@@ -357,6 +357,9 @@ func (r *serverRuntime) failStart(msg string) {
 }
 
 func (r *serverRuntime) consumeOutput(reader io.Reader) {
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
+	}
 	buf := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buf)
@@ -684,6 +687,34 @@ func (r *serverRuntime) updateMetrics(m *processMetrics) {
 }
 
 func (r *serverRuntime) logTail(n int) []string { return r.logs.tail(n) }
+
+func (r *serverRuntime) writeTerminal(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
+	r.mu.Lock()
+	child := r.child
+	active := r.state.isActive()
+	r.mu.Unlock()
+	if !active || child == nil {
+		return 0, errors.New("server is not running")
+	}
+	return child.write(data)
+}
+
+func (r *serverRuntime) resizeTerminal(width, height int) error {
+	if width < 1 || width > 500 || height < 1 || height > 200 {
+		return errors.New("terminal dimensions must be between 1x1 and 500x200")
+	}
+	r.mu.Lock()
+	child := r.child
+	active := r.state.isActive()
+	r.mu.Unlock()
+	if !active || child == nil {
+		return errors.New("server is not running")
+	}
+	return child.resize(width, height)
+}
 
 func (r *serverRuntime) currentPID() int {
 	r.mu.Lock()

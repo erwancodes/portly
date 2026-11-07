@@ -33,6 +33,8 @@ func startAPI(sup *supervisor, port int) (*apiServer, error) {
 	mux.HandleFunc("/status", srv.get(srv.status))
 	mux.HandleFunc("/config", srv.get(srv.config))
 	mux.HandleFunc("/logs", srv.get(srv.logs))
+	mux.HandleFunc("/terminal/write", srv.post(srv.terminalWrite))
+	mux.HandleFunc("/terminal/resize", srv.post(srv.terminalResize))
 	mux.HandleFunc("/temporary/status", srv.get(srv.temporaryStatus))
 	mux.HandleFunc("/ports", srv.get(srv.ports))
 	mux.HandleFunc("/start", srv.post(srv.start))
@@ -104,6 +106,42 @@ func (s *apiServer) logs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, logsResponse{Server: rt.config.Name, Lines: rt.logTail(tail)})
+}
+
+func (s *apiServer) terminalWrite(w http.ResponseWriter, r *http.Request) {
+	var body terminalWriteRequest
+	if err := decodeBody(r, &body); err != nil {
+		writeFail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rt := s.sup.resolveRuntime(body.Server)
+	if rt == nil {
+		writeFail(w, http.StatusNotFound, "No server matching '"+body.Server+"'")
+		return
+	}
+	if _, err := rt.writeTerminal([]byte(body.Data)); err != nil {
+		writeFail(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeOK(w, actionResponse{Affected: []string{rt.id}, Message: "Wrote terminal input to " + rt.config.Name})
+}
+
+func (s *apiServer) terminalResize(w http.ResponseWriter, r *http.Request) {
+	var body terminalResizeRequest
+	if err := decodeBody(r, &body); err != nil {
+		writeFail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rt := s.sup.resolveRuntime(body.Server)
+	if rt == nil {
+		writeFail(w, http.StatusNotFound, "No server matching '"+body.Server+"'")
+		return
+	}
+	if err := rt.resizeTerminal(body.Width, body.Height); err != nil {
+		writeFail(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeOK(w, actionResponse{Affected: []string{rt.id}, Message: fmt.Sprintf("Resized terminal for %s to %dx%d", rt.config.Name, body.Width, body.Height)})
 }
 
 func (s *apiServer) temporaryStatus(w http.ResponseWriter, r *http.Request) {

@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import (
@@ -10,6 +12,8 @@ import (
 )
 
 const foreverUnitName = "portly.service"
+
+func foreverBackendName() string { return "systemd --user" }
 
 type foreverState struct {
 	Enabled          bool   `json:"enabled"`
