@@ -1,94 +1,92 @@
 # Portly
 
-Portly is a native macOS supervisor for local development servers. It keeps each command in a real interactive PTY, checks its port, restarts it after crashes, and exposes the same controls through a menu bar app, a CLI, and a loopback-only HTTP API.
+**Your dev servers, kept alive. On macOS, Windows and Linux.**
 
-Use persistent projects for long-lived, reusable services. Use top-level **Temporary** jobs for builds, tests, one-off previews, demos, generated artifacts, and short tasks; they run in the background with a deadline, expose their logs and exit code, and are never restored on the next launch.
+Portly supervises your local development servers. It runs each command in a real terminal, checks its port, restarts it after a crash, and gives you the same controls in a desktop app, a CLI, and a loopback-only HTTP API. Built so your AI coding agents stop launching stray `npm run dev` processes in the background.
 
-Portly requires macOS 14 or newer and Swift 6.
+[Download](https://github.com/Melvynx/portly/releases/latest) · [portly.melvynx.dev](https://portly.melvynx.dev) · [Windows guide](docs/windows.md)
 
-## Smart resource dashboard
+![Portly on Windows](docs/images/portly-windows.png)
 
-The native **Resources** screen samples every Portly-owned process tree every two seconds and keeps a five-minute memory history. It shows physical footprint, resident RAM, CPU, project trends, and the current user's heaviest processes running outside Portly. Configure the optional global project limit and per-project inherit/off/custom overrides in **Settings → Memory**. A project restarts after three consecutive over-limit footprint samples, then sampling starts fresh on the replacement processes.
+## What it does
 
-Portly turns those measurements into machine-aware recommendations instead of relying on one fixed limit. It detects unusually large servers and processes, sustained growth while ignoring isolated build spikes, and duplicate dev sessions outside Portly. Advice is tailored to common Next.js, Vite, Node, TypeScript, browser, Docker, Redis, and Postgres failure modes. Managed servers can be restarted or stopped from the recommendation card. External process cards show the validated stop target, parent, working directory, listening ports, and the difference between footprint and resident RAM; an explicit confirmation can send SIGTERM, but Portly never terminates them automatically or escalates to SIGKILL.
+- Projects and servers that stay up: port checks, health URLs, automatic restart after a crash.
+- **Temporary** jobs for builds, tests, previews and one-off tasks: they run in the background with a deadline, expose their logs and exit code, and are never restored on the next launch.
+- A live **Resources** view: memory and CPU per project, five-minute history, and the heaviest processes running outside Portly.
+- An optional memory limit, global or per project, that restarts a server after three over-limit samples in a row.
+- **Take over** a server already running outside Portly, including a Docker-published port.
+- Start at login with `portly forever enable`.
+- An agent skill so Claude Code, Codex and Cursor manage servers through Portly.
 
-When Docker Desktop owns a published host port, Portly resolves the actual container through the Docker CLI. **Stop** and **Move to Portly** stop only that container instead of signaling the global `com.docker.backend` process.
+## Platforms
+
+| Platform | App | Status |
+| --- | --- | --- |
+| macOS 14+ | Native SwiftUI menu bar app + CLI | Supported, signed and notarized |
+| Windows 10/11 x64 | Native desktop app (Wails) with a notification-area menu + CLI | Supported |
+| Linux | Headless supervisor + CLI | Supported |
+
+All three share the same CLI, config format and local API on `127.0.0.1:7737`.
 
 ## Install
+
+### macOS
+
+Download `Portly-macOS.zip` from the [latest release](https://github.com/Melvynx/portly/releases/latest), or build from source (Swift 6):
 
 ```bash
 ./build.sh --run
 ```
 
-This builds and ad-hoc signs `Portly.app`, installs it in `/Applications`, installs `portly` in the first writable bin directory on `PATH`, installs the bundled skill in `~/.agents/skills/portly`, adds idempotent Portly server-management rules to `~/.agents/AGENTS.md`, and launches the app. Reinstalling quits the running app first, which stops every server supervised by Portly. Public GitHub releases are signed with Developer ID and notarized by Apple.
+This builds and ad-hoc signs `Portly.app`, installs it in `/Applications`, installs `portly` in the first writable bin directory on `PATH`, installs the bundled skill in `~/.agents/skills/portly`, adds idempotent Portly server-management rules to `~/.agents/AGENTS.md`, and launches the app. Reinstalling quits the running app first, which stops every server supervised by Portly. Use `./build.sh --no-install` to assemble `dist/Portly.app` without installing it.
 
-People who download the signed macOS app can complete the same agent setup from the onboarding card at the top of Portly. It installs the bundled skill and CLI, then adds marker-delimited global rules to `~/.agents/AGENTS.md` and `~/.claude/CLAUDE.md` without replacing existing instructions.
+People who download the signed app can complete the same agent setup from the onboarding card at the top of Portly. It installs the bundled skill and CLI, then adds marker-delimited global rules to `~/.agents/AGENTS.md` and `~/.claude/CLAUDE.md` without replacing existing instructions.
 
-To launch Portly automatically at every macOS login, use:
+To launch Portly at every macOS login, run `./build.sh --forever`, then check it with `portly forever status --json`. `portly forever disable` removes the LaunchAgent and leaves active servers running.
 
-```bash
-./build.sh --forever
-portly forever status --json
-```
+### Windows
 
-`portly forever enable` preserves and restarts the servers that were active during the handoff to `launchd`. `portly forever disable` removes the LaunchAgent recoverably and leaves active servers running under a regular Portly launch. This mode supervises the macOS app.
+Run `PortlySetup.exe` from the Windows release package. It installs the app and the CLI per user under `%LOCALAPPDATA%\Portly`, without administrator rights, adds `portly` to your PATH and creates a Start Menu shortcut.
 
-Use `./build.sh --no-install` to assemble `dist/Portly.app` without installing it.
+The app shows projects, temporary jobs, resources, live logs and settings, with a `Ctrl K` command palette. Closing the window hides it and keeps your servers running; **Quit Portly** in the tray menu stops them. Servers run in a ConPTY terminal, through PowerShell (or `cmd.exe` when it is missing), and `portly forever enable` registers a Task Scheduler task at logon.
 
-## Linux
-
-Linux uses the headless supervisor in [`cli/`](cli). Do not install the SwiftUI/AppKit app there. The binary is the supervisor: a CLI command auto-starts a loopback daemon on `127.0.0.1` (default `7737`) if needed.
-
-```bash
-cd cli
-go test ./...
-go build -o portly .
-sudo install -m 755 portly /usr/local/bin/portly
-# or: GOOS=linux GOARCH=amd64 go build -o portly .
-```
-
-The command surface matches macOS (`status`, `temp`, `wait`, `add-project`, `add-server`, `start`/`stop`/`restart`, `logs`, `take-over`, `memory-limit`, `forever`, …). `open` succeeds with a no-UI message. `forever` manages a systemd user unit (`portly forever enable|status|disable`); it fails clearly when `systemctl --user` is unavailable instead of writing a LaunchAgent.
-
-Do not run the macOS app and this daemon on the same host: they both claim `127.0.0.1:7737`. Config and logs stay at `~/.config/portly/`.
-
-Docs: [portly.melvynx.dev/linux](https://portly.melvynx.dev/linux)
-
-## Windows
-
-The headless Go supervisor in [`cli/`](cli) also builds for Windows x64:
+Build from source (Go 1.22+, Node 22+):
 
 ```powershell
 cd cli
-go test ./...
-go build -o portly.exe .
+go build -trimpath -o portly.exe .
+cd ..\windows
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend build
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
-Windows uses PowerShell when available and falls back to `cmd.exe` for server
-commands. Port discovery uses `netstat`, process-tree shutdown uses
-`taskkill`, and `portly forever enable|status|disable` uses the per-user
-Windows Task Scheduler. The local API remains bound to `127.0.0.1`.
+Details and known limitations: [`docs/windows.md`](docs/windows.md).
 
-The current Windows milestone includes the CLI/daemon supervisor, the ConPTY
-fallback, and a native Wails desktop shell in [`windows/`](windows). The shell
-shows projects, temporary jobs, resources, live logs, and daemon settings; it
-hides on window close and keeps the supervisor running until **Quit Portly**.
-The shell also exposes terminal stdin/resize on ConPTY, includes a per-user
-`PortlySetup.exe` installer, and adds a native Windows notification-area menu.
-Automatic binary updates remain a release-page handoff. See
-[`docs/windows.md`](docs/windows.md) for the supported surface and known
-limitations.
+### Linux
 
-## Updates and releases
-
-Portly checks the signed Sparkle feed once a day and also exposes **Check for Updates…** in the app menu and Settings. The installed version is visible in Settings and in the standard About window.
-
-To publish a new version, update the single value in `Sources/PortlyCore/Version.swift`, commit and push it, then run:
+Linux uses the headless supervisor in [`cli/`](cli). The binary is the supervisor: any CLI command auto-starts a loopback daemon on `127.0.0.1:7737` if needed.
 
 ```bash
-./release.sh 0.1.2
+cd cli
+go build -o portly .
+sudo install -m 755 portly /usr/local/bin/portly
 ```
 
-The release script builds a universal Apple silicon and Intel binary from the pushed commit. It creates a hardened-runtime Developer ID build, submits it to Apple for notarization, staples the ticket, signs the update with the Sparkle key stored in the macOS Keychain, and publishes `Portly-macOS.zip` plus `appcast.xml` to a versioned GitHub release. The landing page and the app feed both follow GitHub's latest release URLs.
+`open` succeeds with a no-UI message, and `forever` manages a systemd user unit; it fails clearly when `systemctl --user` is unavailable. Config and logs stay at `~/.config/portly/`. Docs: [portly.melvynx.dev/linux](https://portly.melvynx.dev/linux)
+
+Do not run the macOS app and a CLI daemon on the same host: both claim `127.0.0.1:7737`.
+
+## FAQ
+
+**Does Portly expose my servers' controls to the network?**
+No. The API listens only on `127.0.0.1`, because it can start processes.
+
+**Does it kill processes it doesn't own?**
+Never automatically. External processes are only stopped after an explicit confirmation, with a graceful signal first. For Docker-published ports, Portly stops only the container, not Docker itself.
+
+**How does memory differ between platforms?**
+macOS reports physical footprint; Windows reports the private working set of each process tree.
 
 ## CLI
 
@@ -215,3 +213,16 @@ Responses are JSON envelopes with `ok`, `data`, and `error` fields. The CLI is t
 The distributable skill is in [`skills/portly`](skills/portly). The installer copies it to the canonical personal root at `~/.agents/skills/portly`, which is shared by Codex and Cursor and exposed to Claude through the standard `~/.claude/skills` compatibility link.
 
 The source installer maintains a marker-delimited rule in `~/.agents/AGENTS.md`. The downloadable app's onboarding also installs it in `~/.claude/CLAUDE.md` so Claude receives the same global fallback. During project setup, the skill requires the same rule in the repository's root `AGENTS.md`; this makes the behavior portable to collaborators and other machines. Every write is idempotent and preserves existing instructions.
+
+## Updates and releases (macOS)
+
+Portly checks the signed Sparkle feed once a day and also exposes **Check for Updates…** in the app menu and Settings. The installed version is visible in Settings and in the standard About window.
+
+To publish a new version, update the single value in `Sources/PortlyCore/Version.swift`, commit and push it, then run:
+
+```bash
+./release.sh 0.1.2
+```
+
+The release script builds a universal Apple silicon and Intel binary from the pushed commit. It creates a hardened-runtime Developer ID build, submits it to Apple for notarization, staples the ticket, signs the update with the Sparkle key stored in the macOS Keychain, and publishes `Portly-macOS.zip` plus `appcast.xml` to a versioned GitHub release. The landing page and the app feed both follow GitHub's latest release URLs.
+
