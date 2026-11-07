@@ -10,6 +10,9 @@ import (
 
 type processMetrics struct {
 	CPUPercent          float64
+	// ActiveCPUPercent feeds the idle stop. Windows samples are already
+	// instantaneous, so it always equals CPUPercent.
+	ActiveCPUPercent    float64
 	MemoryBytes         uint64
 	ResidentMemoryBytes uint64
 	ProcessCount        int
@@ -54,6 +57,7 @@ func sampleMetrics(rootPIDs map[int]struct{}) map[int]processMetrics {
 		}
 		m := totals[root]
 		m.CPUPercent += rec.CPUPercent
+		m.ActiveCPUPercent += rec.CPUPercent
 		m.MemoryBytes += rec.Footprint
 		m.ResidentMemoryBytes += rec.RSSBytes
 		m.ProcessCount++

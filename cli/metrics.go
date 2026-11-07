@@ -10,10 +10,29 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+const linuxClockTicks = 100
+
+type cpuSnapshot struct {
+	ticks uint64
+	at    time.Time
+}
+
+var (
+	cpuMu       sync.Mutex
+	cpuPrevious = map[int]cpuSnapshot{}
 )
 
 type processMetrics struct {
-	CPUPercent          float64
+	CPUPercent float64
+	// ActiveCPUPercent is the instantaneous tree sum. CPUPercent is replaced by
+	// the lifetime average on Linux, which stays high long after startup work.
+	ActiveCPUPercent    float64
+	CPUTicks            uint64
+	StartTime           uint64
 	MemoryBytes         uint64
 	ResidentMemoryBytes uint64
 	ProcessCount        int
@@ -25,6 +44,8 @@ type procRecord struct {
 	RSSBytes   uint64
 	Footprint  uint64
 	CPUPercent float64
+	CPUTicks   uint64
+	StartTime  uint64
 	Command    string
 }
 
@@ -58,9 +79,21 @@ func sampleMetrics(rootPIDs map[int]struct{}) map[int]processMetrics {
 		}
 		m := totals[root]
 		m.CPUPercent += rec.CPUPercent
+		m.ActiveCPUPercent += rec.CPUPercent
+		m.CPUTicks += rec.CPUTicks
 		m.MemoryBytes += rec.Footprint
 		m.ResidentMemoryBytes += rec.RSSBytes
 		m.ProcessCount++
+		if rec.PID == root {
+			m.StartTime = rec.StartTime
+		}
+		totals[root] = m
+	}
+	uptime := linuxUptime()
+	for root, m := range totals {
+		if life := processLifetime(m.StartTime, uptime); life > 0 && m.CPUTicks > 0 {
+			m.CPUPercent = float64(m.CPUTicks) / linuxClockTicks / life * 100
+		}
 		totals[root] = m
 	}
 	return totals
@@ -90,32 +123,90 @@ func listLinuxProcesses() []procRecord {
 		if err != nil {
 			continue
 		}
-		ppid, rssPages := parseStat(string(stat))
+		ppid, rssPages, ticks, startTime := parseStat(string(stat))
 		rss := uint64(rssPages) * uint64(os.Getpagesize())
 		footprint := linuxFootprint(pid, rss)
 		recs = append(recs, procRecord{
-			PID:       pid,
-			ParentPID: ppid,
-			RSSBytes:  rss,
-			Footprint: footprint,
-			Command:   commandForPID(pid),
+			PID:        pid,
+			ParentPID:  ppid,
+			RSSBytes:   rss,
+			Footprint:  footprint,
+			CPUPercent: linuxCPUPercent(pid, ticks),
+			CPUTicks:   ticks,
+			StartTime:  startTime,
+			Command:    commandForPID(pid),
 		})
 	}
+	pruneCPUSnapshots(recs)
 	return recs
 }
 
-func parseStat(stat string) (ppid int, rssPages int) {
+func parseStat(stat string) (ppid int, rssPages int, cpuTicks uint64, startTime uint64) {
 	rparen := strings.LastIndex(stat, ")")
 	if rparen < 0 || rparen+2 >= len(stat) {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	fields := strings.Fields(stat[rparen+2:])
 	if len(fields) < 22 {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	ppid, _ = strconv.Atoi(fields[1])
+	utime, _ := strconv.ParseUint(fields[11], 10, 64)
+	stime, _ := strconv.ParseUint(fields[12], 10, 64)
+	startTime, _ = strconv.ParseUint(fields[19], 10, 64)
 	rssPages, _ = strconv.Atoi(fields[21])
-	return ppid, rssPages
+	return ppid, rssPages, utime + stime, startTime
+}
+
+func linuxUptime() float64 {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0
+	}
+	uptime, _ := strconv.ParseFloat(fields[0], 64)
+	return uptime
+}
+
+func processLifetime(startTime uint64, uptime float64) float64 {
+	life := uptime - float64(startTime)/linuxClockTicks
+	if life < 0 {
+		return 0
+	}
+	return life
+}
+
+func linuxCPUPercent(pid int, ticks uint64) float64 {
+	now := time.Now()
+	cpuMu.Lock()
+	defer cpuMu.Unlock()
+	previous, ok := cpuPrevious[pid]
+	cpuPrevious[pid] = cpuSnapshot{ticks: ticks, at: now}
+	if !ok || ticks < previous.ticks {
+		return 0
+	}
+	elapsed := now.Sub(previous.at).Seconds()
+	if elapsed < 0.2 {
+		return 0
+	}
+	return float64(ticks-previous.ticks) / linuxClockTicks / elapsed * 100
+}
+
+func pruneCPUSnapshots(recs []procRecord) {
+	cpuMu.Lock()
+	defer cpuMu.Unlock()
+	live := map[int]bool{}
+	for _, rec := range recs {
+		live[rec.PID] = true
+	}
+	for pid := range cpuPrevious {
+		if !live[pid] {
+			delete(cpuPrevious, pid)
+		}
+	}
 }
 
 func linuxFootprint(pid int, rss uint64) uint64 {

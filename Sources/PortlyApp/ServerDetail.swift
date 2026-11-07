@@ -87,6 +87,14 @@ struct ServerDetail: View {
                         Label("Open", systemImage: "safari")
                     }
                     .help("Open \(url)")
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url, forType: .string)
+                    } label: {
+                        Label("Copy URL", systemImage: "doc.on.doc")
+                    }
+                    .help("Copy \(url)")
                 }
 
                 if runtime.state != .stopped {
@@ -190,13 +198,16 @@ struct ServerDetail: View {
                         systemImage: "arrow.clockwise"
                     )
                 }
+                if runtime.isRunning, let idleTimeout = runtime.idleTimeoutSeconds {
+                    fact("Idle stop \(TemporaryTimeout.display(idleTimeout))", systemImage: "moon.zzz")
+                }
 
                 Spacer()
 
                 if let error = runtime.lastError {
                     Text(error)
                         .font(.system(size: 11))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(runtime.idleStoppedAt == nil ? Color.red : Color.secondary)
                         .lineLimit(1)
                         .help(error)
                 }
